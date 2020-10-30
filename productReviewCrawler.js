@@ -17,16 +17,20 @@ document.body.innerHTML = `
     <label for="date">탐색한 데이터를 확인하세요</label><br>
     <table style="border-collapse:collapse;border: 1px solid #BDBDBD;width:100%;">
         <tr>
-            <th style="border: 1px solid #BDBDBD;padding:8px;">총 페이지</th>
-            <th style="border: 1px solid #BDBDBD;padding:8px;">종료 페이지</th>
-            <th style="border: 1px solid #BDBDBD;padding:8px;">리뷰 수(클릭시 복사가능)</th>
+            <th style="border: 1px solid #BDBDBD;padding:8px;">상품 번호(클릭시 상품페이지 이동)</th>
+            <th style="border: 1px solid #BDBDBD;padding:8px;">총 리뷰수</th> 
+            <th style="border: 1px solid #BDBDBD;padding:8px;">기간 조회 리뷰 수</th>
         </tr>
-        <tr style="font-size:18px;">
-            <td id="totalPages" style="border: 1px solid #BDBDBD;text-align:center;padding:8px;">🍕</td>
-            <td id="stopPage" style="border: 1px solid #BDBDBD;text-align:center;padding:8px;">🍔</td>
-            <td id="reviewTotal" class="copy" style="border: 1px solid #BDBDBD;text-align:center;padding:8px; cursor:pointer;">🍟</td>
+        <tr style="font-size:18px;">  
+            <td id="productNo" style="border: 1px solid #BDBDBD;text-align:center;padding:8px;">🍔</td>
+            <td id="totalReview" style="border: 1px solid #BDBDBD;text-align:center;padding:8px;">🍕</td>
+            <td id="searchReview" class="copy" style="border: 1px solid #BDBDBD;text-align:center;padding:8px; cursor:pointer;">🍟</td>
         </tr>
     </table>
+    <br>
+    <div id="copyButtonWrap" style="display:none">
+        <button type="button" id="copyButton" style="padding:14px 15px;border-radius:3px;background:#5F04B4;color:white;font-weight:bold;">데이터 복사</button>
+    </div>
 </form>
 `;
 
@@ -37,9 +41,11 @@ const urlInput = document.getElementById("url");
 const dateInput = document.getElementById("date");
 const button = document.getElementById("button");
 
-const totalPagesTd = document.getElementById("totalPages");
-const stopPageTd = document.getElementById("stopPage");
-const reviewTotalTd = document.getElementById("reviewTotal");
+const totalPagesTd = document.getElementById("totalReview");
+const productNoTd = document.getElementById("productNo");
+const searchReviewTd = document.getElementById("searchReview");
+const copyButtonWrap = document.getElementById("copyButtonWrap");
+const copyButton = document.getElementById("copyButton");
 
 
 /* 리뷰 크롤링 함수 🚀  */
@@ -47,19 +53,30 @@ async function getNaverStoreReview(url, date, func){
 
     const checkDate = new Date(date); //date 파라미터를 Date 타입으로 형변환
     
-    let totalPages; //총 페이지 수를 할당
+    let totalReview; //총 리뷰 수를 할당
+    let productName; //상품이름
+    let productNo; //상품 번호
+    let productUrl; //상품 링크
     let splitUrl = url.split('page=1');//page=1 문자열을 기준으로 앞뒤 값을 배열로 저장함
+    splitUrl[1] = splitUrl[1].split("REVIEW_RANKING")[0]
     let count = 0; //리뷰의 개수를 할당
     let stopPageNumber; //종료한 페이지 번호
+
+    let totalPages;
     
     //댓글의 전체 페이지 수를 받아온다.
     try{
-        totalPages = await fetch(url)
+        let temp = await fetch(url)
                         .then(response => response.json())
-                            .then(json => json.totalPages);
+                            .then(json => json);
+        totalReview = temp.totalElements;
+        productName = temp.contents[0].productName;
+        productNo = temp.contents[0].productNo;
+        productUrl = temp.contents[0].productUrl;
+        totalPages = temp.totalPages;
     }catch(e){
-        console.log('%c 💡 페이지 수를 가져오지 못했습니다. URL을 채크해주세요.','background:#FA5858;color:white;padding:5px 10px;');
-        alert("💡 페이지 수를 가져오지 못했습니다. URL을 채크해주세요.");
+        console.log('%c 💡 페이지 수를 가져오지 못했습니다. URL을 체크해주세요.','background:#FA5858;color:white;padding:5px 10px;');
+        alert("💡 페이지 수를 가져오지 못했습니다. URL을 체크해주세요.");
         urlInput.value = '';
         button.textContent = "탐색하기";
         return false;
@@ -72,10 +89,12 @@ async function getNaverStoreReview(url, date, func){
         
         //각 페이지마다의 컨텐츠를 가져온다.
         try{
-            json = await fetch(splitUrl[0]+`page=${page}`+splitUrl[1])
+            json = await fetch(splitUrl[0]+`page=${page}`+splitUrl[1]+'REVIEW_CREATE_DATE_DESC')
                                 .then(response => response.json())
                                     .then(json => json);
+
         }catch(e){
+            console.log(e);
             console.log('%c 💡 컨텐츠를 가져오지 못했습니다.','background:#FA5858;color:white;padding:5px 10px;');
             alert("💡 컨텐츠를 가져오지 못했습니다.");
             urlInput.value = '';
@@ -103,7 +122,7 @@ async function getNaverStoreReview(url, date, func){
     }
 
     //모든 작업이 끝나면 콜백함수에게 필요 데이터를 전달한다. 데이터를 나타내는 방식은 콜백함수에서 진행
-    func(totalPages, stopPageNumber, count);
+    func(totalReview, count, productName, productNo, productUrl);
 }
 
 /* 탐색 버튼 클릭 이벤트 👆 */
@@ -123,23 +142,24 @@ button.onclick = ()=> {
     getNaverStoreReview(
         urlInput.value,
         dateInput.value,
-        (totalPages, stopPageNumber, count)=>{
+        (totalReview, count, productName, productNo, productUrl)=>{
+
             urlInput.value = '';
             button.textContent = "탐색하기";
-
-            totalPagesTd.textContent = totalPages;
-            stopPageTd.textContent = stopPageNumber;
-            reviewTotalTd.textContent = count;
+            productNoTd.innerHTML = `<a href="${productUrl}" target="_blank">${productNo}</a>`;
+            totalPagesTd.textContent = totalReview;
+            searchReviewTd.textContent = count;
+            copyButtonWrap.style.display = "block";
 
             console.log('%c 검색 결과 🍰','background:linear-gradient(#00BFFF, #01DFA5);color:white;padding:5px 10px;');
-            console.table({"전체페이지":totalPages,"종료페이지":stopPageNumber,"리뷰 수":count});
+            console.table({"총 리뷰수":totalReview, "리뷰 수":count, "상품명": productName, "상품번호": productNo, "url":productUrl});
     });
 }
 
 /* 클립보드 복사 이벤트 🔗 */
-document.querySelector(".copy").addEventListener("click", function(){
+document.querySelector("#copyButton").addEventListener("click", function(){
     let tempElem = document.createElement('textarea');
-    tempElem.value = reviewTotalTd.textContent;  
+    tempElem.value = productNoTd.textContent+"*^*"+totalPagesTd.textContent+"*^*"+searchReviewTd.textContent;  
     document.body.appendChild(tempElem);
 
     tempElem.select();
